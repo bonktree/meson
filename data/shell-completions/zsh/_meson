@@ -180,7 +180,7 @@ local -a meson_commands=(
   '--repeat[number of times to run the tests]:number of times to repeat: '
   '--no-rebuild[do not rebuild before running tests]'
   '--gdb[run tests under gdb]'
-  '--gdb-path=[program to run for gdb (can be wrapper or compaitble program)]:program:_path_commands'
+  '--gdb-path=[program to run for gdb (can be wrapper or compatible program)]:program:_path_commands'
   '--list[list available tests]'
   '(--wrapper --wrap)'{'--wrapper=','--wrap='}'[wrapper to run tests with]:wrapper program:_path_commands'
   "$__meson_cd"
@@ -390,8 +390,8 @@ _arguments \
   local -a specs=(
     "$__meson_cd"
     '--clean[Clean the build directory]'
-    '(-j --jobs)'{'-j','--jobs'}'=[the number fo work jobs to run (if supported)]:_guard "[0-9]#" "number of jobs"'
-    '(-l --load-averate)'{'-l','--load-average'}'=[the system load average to try to maintain (if supported)]:_guard "[0-9]#" "load average"'
+    '(-j --jobs)'{'-j','--jobs'}'=[the number of work jobs to run (if supported)]:_guard "[0-9]#" "number of jobs"'
+    '(-l --load-average)'{'-l','--load-average'}'=[the system load average to try to maintain (if supported)]:_guard "[0-9]#" "load average"'
     '(-v --verbose)'{'-v','--verbose'}'[Show more output]'
     '--ninja-args=[Arguments to pass to ninja (only when using ninja)]'
     '--vs-args=[Arguments to pass to vs (only when using msbuild)]'
