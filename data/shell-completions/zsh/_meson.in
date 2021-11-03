@@ -26,6 +26,9 @@
 # basis, and the Meson development team have no obligation to provide
 # maintenance, support, updates, enhancements, or modifications.
 
+local zsh_site_functions='@ZSH_SITE_FUNCTIONS@'
+local helper="$zsh_site_functions/meson-comp-helper.py"
+
 local __meson_backends="(ninja xcode ${(j. .)${:-vs{,2010,2012,2013,2015,2017,2019,2022}}})"
 local __meson_build_types="(plain debug debugoptimized minsize release custom)"
 local __meson_wrap_modes="(default nofallback nodownload forcefallback nopromote)"
@@ -80,21 +83,83 @@ local -a meson_commands=(
 'compile:Build the project'
 )
 
+__meson_python_interp() {
+  local a
+  a=( ${$(head -n 1 "$(command -v meson)")#\#!} )
+  a="${a[1]##*/}"
+  if ! command -v "$a" >/dev/null; then
+    _message "cannot complete: python not found"
+    return
+  fi
+  printf %s "$a"
+}
+
 (( $+functions[__meson_is_build_dir] )) || __meson_is_build_dir() {
   local mpd="${1:-$PWD}/meson-private"
   [[ -f "$mpd/build.dat" && -f "$mpd/coredata.dat" ]]
   return $?
 }
 
-# TODO: implement build option completion
-(( $+functions[__meson_build_options] )) || __meson_build_options() {}
+# TODO: implement build option completion from subprojects
+(( $+functions[__meson_option-D-1] )) || __meson_option-D-1() {
+  # NB: uses $line from caller.
+  local builddir do_from_source=
+  case "${curcontext%:*}" in
+  (:*:meson-configure)
+    builddir="${line[1]}"
+    if [[ -z "$builddir" ]]; then
+      _message 'build directory not specified; introspecting from source'
+      do_from_source=1
+    fi
+    ;;
+  (:*:meson-setup)
+    do_from_source=1
+    ;;
+  (*)
+    _message 'no completions available'
+    return
+    ;;
+  esac
+
+  # It is hard to parse JSON in zsh. Since Meson is written in Python, we can
+  # use it and its standard library to parse the output of `meson introspect`
+  # and emit a relevant, working completion function.
+  if [[ ! -r "$helper" ]]; then
+    _message 'cannot complete: helper not installed'
+    return
+  fi
+  local interp="$(__meson_python_interp)"
+  if [[ -n "$do_from_source" ]]; then
+    # FIXME: this might be a bit slow, and if we use a cache, it must be per-project.
+    eval "$(_call_program meson meson introspect meson.build --buildoptions | "$interp" "$helper" --buildoptions -)"
+  else
+    # Optimization: fetch pre-recorded introspection data from `$builddir/meson-info/`.
+    eval "$("$interp" "$helper" --buildoptions "$builddir")"
+  fi
+
+  # Complete a build option name after `-D` and before an optional suffix `=`.
+  if ! compset -P 1 '*='; then
+    __meson_project_buildoptions -qS'='
+    return
+  fi
+
+  # Complete a build option value after `-Dname=`.
+  # The context is `option-D-1-1` and not `option-D-2`, since the
+  # subcommand-level _arguments invocation does not distinguish between option
+  # name and value; the `name=value` is the first and only argument of `-D`.
+  local curcontext="${curcontext%:*}:option-D-1-1"
+  # The command `meson configure -D-Doptimization=s` looks for the option
+  # `-Doptimization`.
+  # On the other hand, `meson configure -D -Doptimization=s` fails to set the option
+  # `optimization` to `s` and looks for an argument to the first -D.
+  # This means it is sufficient to strip a single layer of -D.
+  local m_optname="${${IPREFIX#-D}%\=}"
+  __meson_project_buildoption_choices "$m_optname"
+}
 
 # `meson introspect` currently can provide that information in JSON.
-# We can:
-# 1) pipe its output to python3 -m json.tool | grep "$alovelyregex" | cut <...>
-# 2) teach mintro.py to use a different output format
-#    (or perhaps just to select the fields printed)
-
+# We can get more accurate information from there using a technique similar
+# to how we complete build options.
 (( $+functions[__meson_test_names] )) || __meson_test_names() {
   local rtests
   if rtests="$(_call_program meson meson test ${opt_args[-C]:+-C "$opt_args[-C]"} --list)";
@@ -140,7 +205,7 @@ local -a meson_commands=(
   local -a line
   typeset -A opt_args
   _arguments \
-  '*-D-[set the value of a build option]:build option:__meson_build_options' \
+  '*-D+[set the value of a build option]: : __meson_option-D-1' \
   '--cross-file=[cross-compilation environment description]:cross file:_files' \
   '--native-file=[build machine compilation environment description]:native file:_files' \
   '--clearcache[clear cached state]' \
@@ -156,9 +221,9 @@ local -a meson_commands=(
 (( $+functions[_meson-configure] )) || _meson-configure() {
   local curcontext="$curcontext" line
   typeset -A opt_args
-  # TODO: implement 'mesonconf @file'
+
   local -a specs=(
-  '*-D-[set the value of a build option]:build option:__meson_build_options'
+  '*-D+[set the value of a build option]: : __meson_option-D-1'
   '::build directory:_directories'
   )
 
